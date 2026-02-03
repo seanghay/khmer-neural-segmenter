@@ -1,0 +1,45 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "pybind11>=3.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "kns"
+version = "0.0.1"
+license = "MIT"
+license-files = ["LICENSE"]
+description = "Khmer Neural Segmenter"
+readme = "README.md"
+authors = [{ name = "Seanghay Yath", email = "seanghay.dev@gmail.com" }]
+requires-python = ">=3.9"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+wheel.packages = ["src/kns"]
+
+[tool.cibuildwheel]
+build-frontend = "build[uv]"
+enable = ["pypy"]
+
+[tool.cibuildwheel.pyodide]
+build-frontend = { name = "build", args = ["--exports", "whole_archive"] }
+
+[tool.cibuildwheel.ios]
+build-frontend = "build"
+xbuild-tools = ["cmake", "ninja"]
+
+[tool.cibuildwheel.android]
+build-frontend = "build"
+environment.ANDROID_API_LEVEL = "24"
+
+[tool.ruff]
+indent-width = 2
