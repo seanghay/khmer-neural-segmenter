@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "khmerns"
-version = "0.0.3"
+version = "0.0.4"
 license = "MIT"
 license-files = ["LICENSE"]
 description = "Khmer Neural Segmenter"
@@ -31,6 +31,7 @@ Issues = "https://github.com/seanghay/khmer-neural-segmenter/issues"
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 wheel.packages = ["src/khmerns"]
+sdist.exclude = ["training", "img", "test", ".github"]
 
 [tool.cibuildwheel]
 build-frontend = "build[uv]"

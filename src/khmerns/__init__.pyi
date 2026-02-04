@@ -14,3 +14,7 @@ class KhmerSegmenter:
 def tokenize(text: str) -> List[str]:
   """Segment Khmer text and return a list of words."""
   ...
+
+def normalize(text: str) -> str:
+  """Normalize and reorder Khmer character"""
+  ...

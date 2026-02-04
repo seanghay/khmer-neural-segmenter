@@ -13,11 +13,15 @@ pip install khmerns
 ## Usage
 
 ```python
-from khmerns import tokenize
+from khmerns import tokenize, normalize
 
 # Returns a list of words
 words = tokenize("សួស្តីបងប្អូន")
-# ['សួស្តី', 'បង', 'ប្អូន']
+# => ['សួស្តី', 'បង', 'ប្អូន']
+
+# normalize and reorder Khmer characters
+words = tokenize(normalize("សួស្តីបងប្អូន"))
+# => ['សួស្តី', 'បង', 'ប្អូន']
 ```
 
 You can also use the class-based API if you prefer:
@@ -26,8 +30,10 @@ You can also use the class-based API if you prefer:
 from khmerns import KhmerSegmenter
 
 segmenter = KhmerSegmenter()
+
 words = segmenter.tokenize("សួស្តីបងប្អូន")
 # or
+
 words = segmenter("សួស្តីបងប្អូន")
 ```
 
