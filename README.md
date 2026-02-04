@@ -2,7 +2,7 @@
 
 A fast Khmer word segmentation library.
 
-<img src="assets/graph.png" alt="" width=500>
+<img src="img/graph.png" alt="" width=500>
 
 ## Installation
 
