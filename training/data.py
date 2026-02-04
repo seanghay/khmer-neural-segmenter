@@ -15,13 +15,14 @@ re_khmer = re.compile(r"[\u1780-\u17ff]+")
 
 
 class TextDataset(Dataset):
-  def __init__(self, tokenizer: Tokenizer, split="train", train_ratio=0.9):
+  def __init__(self, tokenizer: Tokenizer, split="train", train_ratio=0.95, seed=42):
     super().__init__()
     self.tokenizer = tokenizer
     with open("data/train.txt") as infile:
       lines = [line.rstrip("\n") for line in infile]
 
-    all_items = [c for c in yield_chunks(lines, 64, random.randint(1, 64))]
+    rng = random.Random(seed)
+    all_items = [c for c in yield_chunks(lines, 128, rng.randint(1, 128))]
     split_idx = int(len(all_items) * train_ratio)
 
     if split == "train":
@@ -75,5 +76,3 @@ if __name__ == "__main__":
   dataset = TextDataset(tokenizer=Tokenizer())
   inputs, targets = dataset[1]
   # print(inputs, targets)
-
-  

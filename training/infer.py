@@ -4,12 +4,12 @@ from model import Segmenter
 from tokenizer import Tokenizer
 
 
-def load_model(path="model.pt", device="cpu"):
+def load_model(path, device="cpu"):
   tokenizer = Tokenizer()
   model = Segmenter(
     vocab_size=len(tokenizer),
     embedding_dim=256,
-    hidden_dim=512,
+    hidden_dim=256,
     num_labels=3,
   )
   model.load_state_dict(torch.load(path, map_location=device))
@@ -54,7 +54,7 @@ def segment(text, model, tokenizer, device="cpu"):
 
 if __name__ == "__main__":
   device = "cpu"
-  model, tokenizer = load_model("model.pt", device=device)
+  model, tokenizer = load_model("best_model.pt", device=device)
   text = "ប្រជាជនទីបេរស់នៅ​ក្រៅស្រុក ទូទាំងពិភពលោក បានចាប់ផ្តើមនីតិវិធីបោះឆ្នោត ដើម្បីជ្រើសរើសថ្នាក់ដឹកនាំរដ្ឋាភិបាលភៀស​ខ្លួន ដែលមានទីតាំងស្ថិតនៅ​ទីក្រុង Dharamsala ភាគខាងជើងប្រទេសឥណ្ឌា។ ជាជំហាន​ដំបូង ថ្ងៃទី​១កុម្ភៈ ប្រជាជនទីបេត្រូវបោះឆ្នោត តែងតាំង​​បេក្ខជន​ជាមុនសិន ហើយជំហានបន្ទាប់ នៅថ្ងៃទី​២៦មេសា គឺត្រូវសម្រេចជ្រើសរើសក្នុងចំណោមបេក្ខជន​ឈរឈ្មោះទាំងអស់។​ លទ្ធផលជាស្ថាពរចុងក្រោយ នឹងត្រូវប្រកាស​នៅថ្ងៃ​ទី​១៣ខែឧសភា​។".replace(
     "\u200b", ""
   )

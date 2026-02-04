@@ -7,7 +7,13 @@ class Segmenter(nn.Module):
   def __init__(self, vocab_size, embedding_dim, hidden_dim, num_labels):
     super(Segmenter, self).__init__()
     self.embedding = nn.Embedding(vocab_size, embedding_dim)
-    self.gru = nn.GRU(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
+    self.gru = nn.GRU(
+      embedding_dim,
+      hidden_dim,
+      bidirectional=True,
+      batch_first=True,
+    )
+
     self.fc = nn.Linear(hidden_dim * 2, num_labels)
     self.crf = CRF(num_labels, batch_first=True)
 
@@ -23,7 +29,7 @@ class Segmenter(nn.Module):
 
 
 if __name__ == "__main__":
-  model = Segmenter(vocab_size=200, embedding_dim=256, hidden_dim=512, num_labels=5)
+  model = Segmenter(vocab_size=200, embedding_dim=256, hidden_dim=256, num_labels=5)
   input_data = torch.randint(0, 200, (4, 10)).long()
   target_tags = torch.randint(0, 5, (4, 10)).long()
 

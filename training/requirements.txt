@@ -4,3 +4,4 @@ tqdm
 pytorch-crf
 khmersegment
 regex
+gguf
