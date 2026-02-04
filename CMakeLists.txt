@@ -31,6 +31,14 @@ set(GGML_STATIC ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ggml)
 
+# ===== Fetch utfcpp Library =====
+FetchContent_Declare(
+  utfcpp
+  GIT_REPOSITORY https://github.com/nemtrif/utfcpp.git
+  GIT_TAG v4.0.6
+)
+FetchContent_MakeAvailable(utfcpp)
+
 # ===== Create Python Module =====
 python_add_library(_core MODULE
   src/main.cpp
@@ -47,6 +55,7 @@ target_include_directories(_core PRIVATE
 target_link_libraries(_core PRIVATE
   pybind11::headers
   ggml
+  utf8cpp
 )
 
 # Pass version info

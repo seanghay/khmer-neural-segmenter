@@ -3,6 +3,7 @@
 #include "model_data.h"
 #include "ggml.h"
 #include "gguf.h"
+#include "utf8.h"
 
 #include <cmath>
 #include <cstring>
@@ -348,12 +349,7 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
 
   while (*p && pred_idx < pred_end) {
     // Get UTF-8 character
-    int len = 1;
-    unsigned char c = static_cast<unsigned char>(*p);
-    if ((c & 0x80) == 0) len = 1;
-    else if ((c & 0xE0) == 0xC0) len = 2;
-    else if ((c & 0xF0) == 0xE0) len = 3;
-    else if ((c & 0xF8) == 0xF0) len = 4;
+    int len = utf8::internal::sequence_length(p);
 
     std::string ch(p, len);
     int32_t tag = predictions[pred_idx];

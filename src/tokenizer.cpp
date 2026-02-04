@@ -1,4 +1,5 @@
 #include "tokenizer.h"
+#include "utf8.h"
 
 // Static member definitions
 const int32_t khmer_tokenizer::PAD_ID;
@@ -38,46 +39,14 @@ static const char * VOCAB[] = {
 
 static const size_t VOCAB_SIZE = sizeof(VOCAB) / sizeof(VOCAB[0]);
 
-// Get UTF-8 codepoint length from first byte
-static int utf8_len(unsigned char c) {
-  if ((c & 0x80) == 0) return 1;
-  if ((c & 0xE0) == 0xC0) return 2;
-  if ((c & 0xF0) == 0xE0) return 3;
-  if ((c & 0xF8) == 0xF0) return 4;
-  return 1;
-}
-
-// Decode a UTF-8 sequence to a Unicode codepoint, return bytes consumed
-static int utf8_to_codepoint(const unsigned char * p, uint32_t & cp) {
-  if ((p[0] & 0x80) == 0) {
-    cp = p[0];
-    return 1;
-  }
-  if ((p[0] & 0xE0) == 0xC0) {
-    cp = ((uint32_t)(p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-    return 2;
-  }
-  if ((p[0] & 0xF0) == 0xE0) {
-    cp = ((uint32_t)(p[0] & 0x0F) << 12) | ((uint32_t)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-    return 3;
-  }
-  if ((p[0] & 0xF8) == 0xF0) {
-    cp = ((uint32_t)(p[0] & 0x07) << 18) | ((uint32_t)(p[1] & 0x3F) << 12)
-       | ((uint32_t)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-    return 4;
-  }
-  cp = 0xFFFD; // replacement character
-  return 1;
-}
-
 void khmer_tokenizer_init(khmer_tokenizer & tok) {
   tok.vocab.clear();
   tok.codepoint_to_id.clear();
 
   for (size_t i = 0; i < VOCAB_SIZE; i++) {
     tok.vocab.push_back(VOCAB[i]);
-    uint32_t cp;
-    utf8_to_codepoint(reinterpret_cast<const unsigned char *>(VOCAB[i]), cp);
+    const char * it = VOCAB[i];
+    uint32_t cp = utf8::unchecked::next(it);
     tok.codepoint_to_id[cp] = static_cast<int32_t>(i + 4);
   }
 }
@@ -87,11 +56,10 @@ std::vector<int32_t> khmer_tokenizer_encode(
   const char * text
 ) {
   std::vector<int32_t> ids;
-  const unsigned char * p = reinterpret_cast<const unsigned char *>(text);
+  const char * p = text;
 
   while (*p) {
-    uint32_t cp;
-    int len = utf8_to_codepoint(p, cp);
+    uint32_t cp = utf8::unchecked::next(p);
 
     auto it = tok.codepoint_to_id.find(cp);
     if (it != tok.codepoint_to_id.end()) {
@@ -99,7 +67,6 @@ std::vector<int32_t> khmer_tokenizer_encode(
     } else {
       ids.push_back(khmer_tokenizer::UNK_ID);
     }
-    p += len;
   }
 
   return ids;
