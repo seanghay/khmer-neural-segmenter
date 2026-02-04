@@ -14,6 +14,10 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
+#include <fcntl.h>
+#define fdopen _fdopen
+#define close  _close
+#define unlink _unlink
 #else
 #include <unistd.h>
 #endif
@@ -208,10 +212,9 @@ struct khmer_context * khmer_init() {
 struct khmer_context * khmer_init_from_file(const char * path) {
   struct ggml_context * ctx_w = nullptr;
 
-  struct gguf_init_params params = {
-    .no_alloc = false,
-    .ctx      = &ctx_w,
-  };
+  struct gguf_init_params params;
+  params.no_alloc = false;
+  params.ctx      = &ctx_w;
 
   struct gguf_context * gguf_ctx = gguf_init_from_file(path, params);
   if (!gguf_ctx) {

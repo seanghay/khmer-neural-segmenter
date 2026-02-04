@@ -9,6 +9,7 @@ project(
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Find pybind11 and Python
 find_package(pybind11 CONFIG REQUIRED)
