@@ -47,13 +47,38 @@ static int utf8_len(unsigned char c) {
   return 1;
 }
 
+// Decode a UTF-8 sequence to a Unicode codepoint, return bytes consumed
+static int utf8_to_codepoint(const unsigned char * p, uint32_t & cp) {
+  if ((p[0] & 0x80) == 0) {
+    cp = p[0];
+    return 1;
+  }
+  if ((p[0] & 0xE0) == 0xC0) {
+    cp = ((uint32_t)(p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+    return 2;
+  }
+  if ((p[0] & 0xF0) == 0xE0) {
+    cp = ((uint32_t)(p[0] & 0x0F) << 12) | ((uint32_t)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+    return 3;
+  }
+  if ((p[0] & 0xF8) == 0xF0) {
+    cp = ((uint32_t)(p[0] & 0x07) << 18) | ((uint32_t)(p[1] & 0x3F) << 12)
+       | ((uint32_t)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+    return 4;
+  }
+  cp = 0xFFFD; // replacement character
+  return 1;
+}
+
 void khmer_tokenizer_init(khmer_tokenizer & tok) {
   tok.vocab.clear();
-  tok.char_to_id.clear();
+  tok.codepoint_to_id.clear();
 
   for (size_t i = 0; i < VOCAB_SIZE; i++) {
     tok.vocab.push_back(VOCAB[i]);
-    tok.char_to_id[VOCAB[i]] = static_cast<int32_t>(i + 4);
+    uint32_t cp;
+    utf8_to_codepoint(reinterpret_cast<const unsigned char *>(VOCAB[i]), cp);
+    tok.codepoint_to_id[cp] = static_cast<int32_t>(i + 4);
   }
 }
 
@@ -62,14 +87,14 @@ std::vector<int32_t> khmer_tokenizer_encode(
   const char * text
 ) {
   std::vector<int32_t> ids;
-  const char * p = text;
+  const unsigned char * p = reinterpret_cast<const unsigned char *>(text);
 
   while (*p) {
-    int len = utf8_len(static_cast<unsigned char>(*p));
-    std::string ch(p, len);
+    uint32_t cp;
+    int len = utf8_to_codepoint(p, cp);
 
-    auto it = tok.char_to_id.find(ch);
-    if (it != tok.char_to_id.end()) {
+    auto it = tok.codepoint_to_id.find(cp);
+    if (it != tok.codepoint_to_id.end()) {
       ids.push_back(it->second);
     } else {
       ids.push_back(khmer_tokenizer::UNK_ID);

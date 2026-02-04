@@ -21,20 +21,17 @@ std::vector<int32_t> crf_viterbi_decode(
     score[j] = start_trans[j] + emissions[j];
   }
 
-  // History for backtracking
-  std::vector<std::vector<int32_t>> history;
+  // Pre-allocate working memory
+  std::vector<float> next_score(num_labels);
+  std::vector<int32_t> history((seq_len - 1) * num_labels);
 
   // Forward pass
   for (int t = 1; t < seq_len; t++) {
-    std::vector<float> next_score(num_labels);
-    std::vector<int32_t> indices(num_labels);
-
     for (int j = 0; j < num_labels; j++) {
       float best = -std::numeric_limits<float>::infinity();
       int32_t best_i = 0;
 
       for (int i = 0; i < num_labels; i++) {
-        // score[i] + transitions[i,j] + emissions[t,j]
         float s = score[i] + transitions[i * num_labels + j]
                 + emissions[t * num_labels + j];
         if (s > best) {
@@ -43,10 +40,9 @@ std::vector<int32_t> crf_viterbi_decode(
         }
       }
       next_score[j] = best;
-      indices[j] = best_i;
+      history[(t - 1) * num_labels + j] = best_i;
     }
-    score = next_score;
-    history.push_back(indices);
+    std::swap(score, next_score);
   }
 
   // Add end transitions
@@ -69,7 +65,7 @@ std::vector<int32_t> crf_viterbi_decode(
   best_path[seq_len - 1] = best_last;
 
   for (int t = seq_len - 2; t >= 0; t--) {
-    best_path[t] = history[t][best_path[t + 1]];
+    best_path[t] = history[t * num_labels + best_path[t + 1]];
   }
 
   return best_path;

@@ -3,6 +3,7 @@
 
 #include "tokenizer.h"
 #include "ggml.h"
+#include "gguf.h"
 
 #include <cstdint>
 #include <string>
@@ -42,8 +43,9 @@ struct khmer_model {
   std::vector<float> crf_end;        // [num_labels]
   std::vector<float> crf_trans;      // [num_labels * num_labels]
 
-  // GGML context for weights
+  // GGML/GGUF contexts for weights
   struct ggml_context * ctx_w;
+  struct gguf_context * gguf_ctx = nullptr;
 };
 
 struct khmer_context {

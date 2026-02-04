@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <mutex>
 
 #include "khmer-segmenter.h"
 
@@ -57,11 +58,12 @@ private:
 
 // Global instance for simple API
 static KhmerSegmenter* g_segmenter = nullptr;
+static std::once_flag init_flag;
 
 static void ensure_initialized() {
-  if (!g_segmenter) {
+  std::call_once(init_flag, []() {
     g_segmenter = new KhmerSegmenter();
-  }
+  });
 }
 
 static std::vector<std::string> tokenize(const std::string& text) {

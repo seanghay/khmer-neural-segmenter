@@ -8,7 +8,7 @@
 
 struct khmer_tokenizer {
   std::vector<std::string> vocab;
-  std::unordered_map<std::string, int32_t> char_to_id;
+  std::unordered_map<uint32_t, int32_t> codepoint_to_id;
 
   static const int32_t PAD_ID = 0;
   static const int32_t BOS_ID = 1;

@@ -11,6 +11,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # Find pybind11 and Python
 find_package(pybind11 CONFIG REQUIRED)
 
@@ -19,7 +23,7 @@ include(FetchContent)
 FetchContent_Declare(
   ggml
   GIT_REPOSITORY https://github.com/ggerganov/ggml.git
-  GIT_TAG        master
+  GIT_TAG        a8db410a252c8c8f2d120c6f2e7133ebe032f35d
 )
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)

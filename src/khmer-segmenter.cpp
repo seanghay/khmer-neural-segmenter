@@ -49,6 +49,7 @@ static void matvec_add(
 // GRU cell: compute h_new from x and h_prev
 // W_ih: [3*H, I], W_hh: [3*H, H], b_ih: [3*H], b_hh: [3*H]
 // Gates order: r, z, n (reset, update, new)
+// scratch_gates_x and scratch_gates_h must be pre-allocated to at least 3*hidden_dim floats
 static void gru_cell(
   float * h_new,
   const float * x,
@@ -58,35 +59,23 @@ static void gru_cell(
   const float * b_ih,
   const float * b_hh,
   int hidden_dim,
-  int input_dim
+  int input_dim,
+  float * scratch_gates_x,
+  float * scratch_gates_h
 ) {
   int H = hidden_dim;
   int H3 = 3 * hidden_dim;
 
   // Compute gates: W_ih @ x + b_ih and W_hh @ h + b_hh
-  std::vector<float> gates_x(H3);
-  std::vector<float> gates_h(H3);
+  matvec_add(scratch_gates_x, W_ih, x, b_ih, H3, input_dim);
+  matvec_add(scratch_gates_h, W_hh, h, b_hh, H3, H);
 
-  matvec_add(gates_x.data(), W_ih, x, b_ih, H3, input_dim);
-  matvec_add(gates_h.data(), W_hh, h, b_hh, H3, H);
-
-  // r = sigmoid(gates_x[0:H] + gates_h[0:H])
-  // z = sigmoid(gates_x[H:2H] + gates_h[H:2H])
-  std::vector<float> r(H), z(H), n(H);
-
+  // Fused gate computation: r, z, n, h_new in a single loop
   for (int i = 0; i < H; i++) {
-    r[i] = sigmoid(gates_x[i] + gates_h[i]);
-    z[i] = sigmoid(gates_x[H + i] + gates_h[H + i]);
-  }
-
-  // n = tanh(gates_x[2H:3H] + r * gates_h[2H:3H])
-  for (int i = 0; i < H; i++) {
-    n[i] = tanhf(gates_x[2*H + i] + r[i] * gates_h[2*H + i]);
-  }
-
-  // h_new = (1 - z) * n + z * h
-  for (int i = 0; i < H; i++) {
-    h_new[i] = (1.0f - z[i]) * n[i] + z[i] * h[i];
+    float ri = sigmoid(scratch_gates_x[i] + scratch_gates_h[i]);
+    float zi = sigmoid(scratch_gates_x[H + i] + scratch_gates_h[H + i]);
+    float ni = tanhf(scratch_gates_x[2*H + i] + ri * scratch_gates_h[2*H + i]);
+    h_new[i] = (1.0f - zi) * ni + zi * h[i];
   }
 }
 
@@ -99,6 +88,7 @@ static struct khmer_context * khmer_init_from_gguf(struct gguf_context * gguf_ct
   // Allocate context
   auto * ctx = new khmer_context();
   ctx->model.ctx_w = ctx_w;
+  ctx->model.gguf_ctx = gguf_ctx;
 
   // Read hyperparameters from metadata
   int key_idx;
@@ -233,8 +223,12 @@ struct khmer_context * khmer_init_from_file(const char * path) {
 
 void khmer_free(struct khmer_context * ctx) {
   if (ctx) {
-    // Note: ctx_w is managed by gguf, but we're not freeing gguf_ctx
-    // In production, track and free properly
+    if (ctx->model.ctx_w) {
+      ggml_free(ctx->model.ctx_w);
+    }
+    if (ctx->model.gguf_ctx) {
+      gguf_free(ctx->model.gguf_ctx);
+    }
     delete ctx;
   }
 }
@@ -254,8 +248,9 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
   // Tokenize
   std::vector<int32_t> token_ids = khmer_tokenizer_encode(ctx->tokenizer, text);
 
-  // Add BOS/EOS
+  // Add BOS/EOS (#8: reserve capacity)
   std::vector<int32_t> input_ids;
+  input_ids.reserve(token_ids.size() + 2);
   input_ids.push_back(khmer_tokenizer::BOS_ID);
   input_ids.insert(input_ids.end(), token_ids.begin(), token_ids.end());
   input_ids.push_back(khmer_tokenizer::EOS_ID);
@@ -287,35 +282,40 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
   const float * fc_w = ggml_get_data_f32(model.fc_w);
   const float * fc_b = ggml_get_data_f32(model.fc_b);
 
-  // Forward GRU pass
-  std::vector<float> h_f(hidden_dim, 0.0f);
-  std::vector<std::vector<float>> outputs_f(seq_len, std::vector<float>(hidden_dim));
+  // Pre-allocate GRU scratch buffers (#1: avoid heap allocs in gru_cell)
+  int H3 = 3 * hidden_dim;
+  std::vector<float> scratch_gates_x(H3);
+  std::vector<float> scratch_gates_h(H3);
 
+  // Flat contiguous output buffers (#3)
+  std::vector<float> outputs_f(seq_len * hidden_dim, 0.0f);
+  std::vector<float> outputs_b(seq_len * hidden_dim, 0.0f);
+
+  // Forward GRU pass (#2: write directly to flat buffer)
+  std::vector<float> h_f(hidden_dim, 0.0f);
   for (int t = 0; t < seq_len; t++) {
-    std::vector<float> h_new(hidden_dim);
-    gru_cell(h_new.data(), &embeddings[t * embed_dim], h_f.data(),
-             w_ih_f, w_hh_f, b_ih_f, b_hh_f, hidden_dim, embed_dim);
-    h_f = h_new;
-    outputs_f[t] = h_f;
+    float * out = &outputs_f[t * hidden_dim];
+    gru_cell(out, &embeddings[t * embed_dim], h_f.data(),
+             w_ih_f, w_hh_f, b_ih_f, b_hh_f, hidden_dim, embed_dim,
+             scratch_gates_x.data(), scratch_gates_h.data());
+    memcpy(h_f.data(), out, hidden_dim * sizeof(float));
   }
 
-  // Backward GRU pass
+  // Backward GRU pass (#2: write directly to flat buffer)
   std::vector<float> h_b(hidden_dim, 0.0f);
-  std::vector<std::vector<float>> outputs_b(seq_len, std::vector<float>(hidden_dim));
-
   for (int t = seq_len - 1; t >= 0; t--) {
-    std::vector<float> h_new(hidden_dim);
-    gru_cell(h_new.data(), &embeddings[t * embed_dim], h_b.data(),
-             w_ih_b, w_hh_b, b_ih_b, b_hh_b, hidden_dim, embed_dim);
-    h_b = h_new;
-    outputs_b[t] = h_b;
+    float * out = &outputs_b[t * hidden_dim];
+    gru_cell(out, &embeddings[t * embed_dim], h_b.data(),
+             w_ih_b, w_hh_b, b_ih_b, b_hh_b, hidden_dim, embed_dim,
+             scratch_gates_x.data(), scratch_gates_h.data());
+    memcpy(h_b.data(), out, hidden_dim * sizeof(float));
   }
 
   // Concatenate forward and backward: [seq_len, 2*hidden_dim]
   std::vector<float> gru_out(seq_len * 2 * hidden_dim);
   for (int t = 0; t < seq_len; t++) {
-    memcpy(&gru_out[t * 2 * hidden_dim], outputs_f[t].data(), hidden_dim * sizeof(float));
-    memcpy(&gru_out[t * 2 * hidden_dim + hidden_dim], outputs_b[t].data(), hidden_dim * sizeof(float));
+    memcpy(&gru_out[t * 2 * hidden_dim], &outputs_f[t * hidden_dim], hidden_dim * sizeof(float));
+    memcpy(&gru_out[t * 2 * hidden_dim + hidden_dim], &outputs_b[t * hidden_dim], hidden_dim * sizeof(float));
   }
 
   // Linear layer: emissions = gru_out @ fc_w.T + fc_b
@@ -332,22 +332,21 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
     model.crf_start.data(), model.crf_end.data(), model.crf_trans.data()
   );
 
-  // Remove BOS/EOS predictions
-  if (predictions.size() > 2) {
-    predictions.erase(predictions.begin());
-    predictions.pop_back();
-  }
-
-  // Reconstruct words based on tags
+  // Reconstruct words based on tags (#7: skip BOS/EOS with index offset)
   // Tag 0: non-Khmer, Tag 1: B-WORD, Tag 2: I-WORD
   std::vector<std::string> result;
+  if (predictions.size() <= 2) {
+    return result;
+  }
+  result.reserve(token_ids.size() / 4 + 1);
   std::string current_word;
 
-  // Iterate through text characters and their predictions
+  // Iterate through text characters, skipping BOS (index 0) and EOS (last)
   const char * p = text;
-  size_t pred_idx = 0;
+  size_t pred_idx = 1;  // start at 1 to skip BOS
+  size_t pred_end = predictions.size() - 1;  // stop before EOS
 
-  while (*p && pred_idx < predictions.size()) {
+  while (*p && pred_idx < pred_end) {
     // Get UTF-8 character
     int len = 1;
     unsigned char c = static_cast<unsigned char>(*p);
