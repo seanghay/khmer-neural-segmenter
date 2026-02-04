@@ -43,43 +43,12 @@ public:
     return *this;
   }
 
-  std::string segment(const std::string& text) const {
+  std::vector<std::string> tokenize(const std::string& text) const {
     if (!ctx_) {
       throw std::runtime_error("Segmenter not initialized");
     }
 
-    char* result = khmer_segment(ctx_, text.c_str());
-    if (!result) {
-      return "";
-    }
-
-    std::string output(result);
-    khmer_free_string(result);
-    return output;
-  }
-
-  std::vector<std::string> tokenize(const std::string& text) const {
-    std::string segmented = segment(text);
-    std::vector<std::string> tokens;
-
-    if (segmented.empty()) {
-      return tokens;
-    }
-
-    size_t start = 0;
-    size_t end = segmented.find('|');
-
-    while (end != std::string::npos) {
-      tokens.push_back(segmented.substr(start, end - start));
-      start = end + 1;
-      end = segmented.find('|', start);
-    }
-
-    if (start < segmented.size()) {
-      tokens.push_back(segmented.substr(start));
-    }
-
-    return tokens;
+    return khmer_segment(ctx_, text.c_str());
   }
 
 private:
@@ -95,11 +64,6 @@ static void ensure_initialized() {
   }
 }
 
-static std::string segment(const std::string& text) {
-  ensure_initialized();
-  return g_segmenter->segment(text);
-}
-
 static std::vector<std::string> tokenize(const std::string& text) {
   ensure_initialized();
   return g_segmenter->tokenize(text);
@@ -111,9 +75,6 @@ PYBIND11_MODULE(_core, m) {
   // Class-based API
   py::class_<KhmerSegmenter>(m, "KhmerSegmenter")
     .def(py::init<>())
-    .def("segment", &KhmerSegmenter::segment,
-         py::arg("text"),
-         "Segment Khmer text and return pipe-delimited words")
     .def("tokenize", &KhmerSegmenter::tokenize,
          py::arg("text"),
          "Segment Khmer text and return a list of words")
@@ -122,10 +83,6 @@ PYBIND11_MODULE(_core, m) {
          "Segment Khmer text and return a list of words");
 
   // Simple function API (uses global instance)
-  m.def("segment", &segment,
-        py::arg("text"),
-        "Segment Khmer text and return pipe-delimited words");
-
   m.def("tokenize", &tokenize,
         py::arg("text"),
         "Segment Khmer text and return a list of words");

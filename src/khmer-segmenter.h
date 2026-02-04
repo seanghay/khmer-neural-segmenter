@@ -63,11 +63,7 @@ struct khmer_context * khmer_init_from_file(const char * path);
 // Free resources
 void khmer_free(struct khmer_context * ctx);
 
-// Segment text, returns pipe-delimited words
-// Caller must free the returned string with khmer_free_string
-char * khmer_segment(struct khmer_context * ctx, const char * text);
-
-// Free segmented result string
-void khmer_free_string(char * str);
+// Segment text, returns a vector of word strings
+std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * text);
 
 #endif // KHMER_SEGMENTER_H

@@ -236,13 +236,9 @@ void khmer_free(struct khmer_context * ctx) {
   }
 }
 
-void khmer_free_string(char * str) {
-  free(str);
-}
-
-char * khmer_segment(struct khmer_context * ctx, const char * text) {
+std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * text) {
   if (!ctx || !text) {
-    return nullptr;
+    return {};
   }
 
   const auto & model = ctx->model;
@@ -341,7 +337,7 @@ char * khmer_segment(struct khmer_context * ctx, const char * text) {
 
   // Reconstruct words based on tags
   // Tag 0: non-Khmer, Tag 1: B-WORD, Tag 2: I-WORD
-  std::string result;
+  std::vector<std::string> result;
   std::string current_word;
 
   // Iterate through text characters and their predictions
@@ -362,20 +358,17 @@ char * khmer_segment(struct khmer_context * ctx, const char * text) {
 
     if (tag == 1) {  // B-WORD
       if (!current_word.empty()) {
-        if (!result.empty()) result += "|";
-        result += current_word;
+        result.push_back(std::move(current_word));
       }
       current_word = ch;
     } else if (tag == 2) {  // I-WORD
       current_word += ch;
     } else {  // 0 (non-Khmer)
       if (!current_word.empty()) {
-        if (!result.empty()) result += "|";
-        result += current_word;
+        result.push_back(std::move(current_word));
         current_word.clear();
       }
-      if (!result.empty()) result += "|";
-      result += ch;
+      result.push_back(ch);
     }
 
     p += len;
@@ -384,12 +377,8 @@ char * khmer_segment(struct khmer_context * ctx, const char * text) {
 
   // Flush remaining word
   if (!current_word.empty()) {
-    if (!result.empty()) result += "|";
-    result += current_word;
+    result.push_back(std::move(current_word));
   }
 
-  // Return copy
-  char * ret = static_cast<char *>(malloc(result.size() + 1));
-  strcpy(ret, result.c_str());
-  return ret;
+  return result;
 }
