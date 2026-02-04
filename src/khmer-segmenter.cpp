@@ -164,10 +164,10 @@ struct khmer_context * khmer_init_from_buffer(const void * data, size_t size) {
 #ifdef _WIN32
   char temp_dir[MAX_PATH];
   GetTempPathA(MAX_PATH, temp_dir);
-  snprintf(temp_path, sizeof(temp_path), "%skns_model_XXXXXX", temp_dir);
+  snprintf(temp_path, sizeof(temp_path), "%skhmerns_model_XXXXXX", temp_dir);
   int fd = _mktemp_s(temp_path, sizeof(temp_path)) == 0 ? _open(temp_path, _O_CREAT | _O_RDWR, 0600) : -1;
 #else
-  snprintf(temp_path, sizeof(temp_path), "/tmp/kns_model_XXXXXX");
+  snprintf(temp_path, sizeof(temp_path), "/tmp/khmerns_model_XXXXXX");
   int fd = mkstemp(temp_path);
 #endif
 

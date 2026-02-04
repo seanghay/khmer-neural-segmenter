@@ -5,27 +5,23 @@ A fast Khmer word segmentation library.
 ## Installation
 
 ```
-pip install kns
+pip install khmerns
 ```
 
 ## Usage
 
 ```python
-from kns import tokenize, segment
+from khmerns import tokenize
 
 # Returns a list of words
 words = tokenize("សួស្តីបងប្អូន")
 # ['សួស្តី', 'បង', 'ប្អូន']
-
-# Returns a pipe-delimited string
-text = segment("សួស្តីបងប្អូន")
-# 'សួស្តី|បង|ប្អូន'
 ```
 
 You can also use the class-based API if you prefer:
 
 ```python
-from kns import KhmerSegmenter
+from khmerns import KhmerSegmenter
 
 segmenter = KhmerSegmenter()
 words = segmenter.tokenize("សួស្តីបងប្អូន")

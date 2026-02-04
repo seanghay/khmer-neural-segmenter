@@ -48,5 +48,5 @@ target_link_libraries(_core PRIVATE
 # Pass version info
 target_compile_definitions(_core PRIVATE VERSION_INFO="${PROJECT_VERSION}")
 
-# Install to the kns package directory
-install(TARGETS _core DESTINATION kns)
+# Install to the khmerns package directory
+install(TARGETS _core DESTINATION khmerns)

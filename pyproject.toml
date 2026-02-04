@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.11", "pybind11>=3.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "kns"
+name = "khmerns"
 version = "0.0.1"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -24,7 +24,7 @@ classifiers = [
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
-wheel.packages = ["src/kns"]
+wheel.packages = ["src/khmerns"]
 
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
