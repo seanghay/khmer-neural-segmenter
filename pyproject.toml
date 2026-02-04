@@ -4,13 +4,14 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "khmerns"
-version = "0.0.1"
+version = "0.0.2"
 license = "MIT"
 license-files = ["LICENSE"]
 description = "Khmer Neural Segmenter"
 readme = "README.md"
 authors = [{ name = "Seanghay Yath", email = "seanghay.dev@gmail.com" }]
 requires-python = ">=3.9"
+keywords = ["khmer", "nlp", "segmentation", "tokenization", "neural-network"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3 :: Only",
@@ -21,6 +22,11 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
+
+[project.urls]
+Homepage = "https://github.com/seanghay/khmer-neural-segmenter"
+Repository = "https://github.com/seanghay/khmer-neural-segmenter"
+Issues = "https://github.com/seanghay/khmer-neural-segmenter/issues"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
