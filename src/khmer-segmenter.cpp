@@ -23,6 +23,47 @@
 #include <unistd.h>
 #endif
 
+// Buffer reader for parsing GGUF binary format directly from memory
+struct gguf_buf_reader {
+  const uint8_t * buf;
+  size_t size;
+  size_t offset;
+
+  gguf_buf_reader(const void * data, size_t len)
+    : buf(static_cast<const uint8_t *>(data)), size(len), offset(0) {}
+
+  void read_raw(void * dst, size_t n) {
+    memcpy(dst, buf + offset, n);
+    offset += n;
+  }
+
+  uint32_t read_u32() { uint32_t v; read_raw(&v, 4); return v; }
+  uint64_t read_u64() { uint64_t v; read_raw(&v, 8); return v; }
+  int64_t  read_i64() { int64_t  v; read_raw(&v, 8); return v; }
+
+  std::string read_string() {
+    uint64_t len = read_u64();
+    std::string s(reinterpret_cast<const char *>(buf + offset), len);
+    offset += len;
+    return s;
+  }
+
+  void skip(size_t n) { offset += n; }
+  void align_to(size_t alignment) {
+    size_t rem = offset % alignment;
+    if (rem) offset += alignment - rem;
+  }
+};
+
+// Parsed tensor info from GGUF header
+struct parsed_tensor_info {
+  std::string name;
+  uint32_t n_dims;
+  int64_t  ne[GGML_MAX_DIMS];
+  uint32_t type;
+  uint64_t offset;
+};
+
 // Helper: sigmoid
 static float sigmoid(float x) {
   return 1.0f / (1.0f + expf(-x));
@@ -147,49 +188,145 @@ static struct khmer_context * khmer_init_from_gguf(struct gguf_context * gguf_ct
   return ctx;
 }
 
-// Load model from memory buffer by writing to temp file
+// Load model from memory buffer by parsing GGUF directly
 struct khmer_context * khmer_init_from_buffer(const void * data, size_t size) {
-  // Create a temporary file
-  char temp_path[256];
+  gguf_buf_reader r(data, size);
 
-#ifdef _WIN32
-  char temp_dir[MAX_PATH];
-  GetTempPathA(MAX_PATH, temp_dir);
-  snprintf(temp_path, sizeof(temp_path), "%skhmerns_model_XXXXXX", temp_dir);
-  int fd = _mktemp_s(temp_path, sizeof(temp_path)) == 0 ? _open(temp_path, _O_CREAT | _O_RDWR, 0600) : -1;
-#else
-  snprintf(temp_path, sizeof(temp_path), "/tmp/khmerns_model_XXXXXX");
-  int fd = mkstemp(temp_path);
-#endif
-
-  if (fd < 0) {
-    fprintf(stderr, "Failed to create temporary file\n");
+  // Validate magic
+  uint32_t magic = r.read_u32();
+  if (memcmp(&magic, "GGUF", 4) != 0) {
+    fprintf(stderr, "Invalid GGUF magic\n");
     return nullptr;
   }
 
-  // Write the embedded data to the temp file
-  FILE * fp = fdopen(fd, "wb");
-  if (!fp) {
-    close(fd);
-    unlink(temp_path);
-    fprintf(stderr, "Failed to open temporary file for writing\n");
+  // Read header
+  uint32_t version     = r.read_u32();
+  uint64_t n_tensors   = r.read_u64();
+  uint64_t n_kv        = r.read_u64();
+
+  if (version != 3) {
+    fprintf(stderr, "Unsupported GGUF version: %u\n", version);
     return nullptr;
   }
 
-  size_t written = fwrite(data, 1, size, fp);
-  fclose(fp);
+  // Parse KV pairs, extracting hparams
+  khmer_hparams hparams;
+  for (uint64_t i = 0; i < n_kv; i++) {
+    std::string key = r.read_string();
+    uint32_t vtype = r.read_u32();
 
-  if (written != size) {
-    unlink(temp_path);
-    fprintf(stderr, "Failed to write model data to temporary file\n");
+    if (vtype == 4 /* UINT32 */) {
+      uint32_t val = r.read_u32();
+      if (key == "khmer.vocab_size")     hparams.vocab_size     = val;
+      else if (key == "khmer.embedding_dim") hparams.embedding_dim = val;
+      else if (key == "khmer.hidden_dim")    hparams.hidden_dim    = val;
+      else if (key == "khmer.num_labels")    hparams.num_labels    = val;
+    } else if (vtype == 8 /* STRING */) {
+      uint64_t slen = r.read_u64();
+      r.skip(slen);
+    } else if (vtype == 9 /* ARRAY */) {
+      uint32_t arr_type = r.read_u32();
+      uint64_t arr_len  = r.read_u64();
+      // Skip array elements
+      static const size_t type_sizes[] = {1,1,2,2,4,4,4,1,0,0,8,8,8};
+      if (arr_type == 8) {
+        for (uint64_t j = 0; j < arr_len; j++) {
+          uint64_t sl = r.read_u64();
+          r.skip(sl);
+        }
+      } else if (arr_type < 13 && arr_type != 9) {
+        r.skip(arr_len * type_sizes[arr_type]);
+      }
+    } else {
+      // Scalar types: skip by size
+      static const size_t type_sizes[] = {1,1,2,2,4,4,4,1,0,0,8,8,8};
+      if (vtype < 13) {
+        r.skip(type_sizes[vtype]);
+      }
+    }
+  }
+
+  // Parse tensor info entries
+  std::vector<parsed_tensor_info> tensors(n_tensors);
+  for (uint64_t i = 0; i < n_tensors; i++) {
+    tensors[i].name   = r.read_string();
+    tensors[i].n_dims = r.read_u32();
+    for (int d = 0; d < GGML_MAX_DIMS; d++) tensors[i].ne[d] = 1;
+    for (uint32_t d = 0; d < tensors[i].n_dims; d++) {
+      tensors[i].ne[d] = static_cast<int64_t>(r.read_u64());
+    }
+    tensors[i].type   = r.read_u32();
+    tensors[i].offset = r.read_u64();
+  }
+
+  // Data section starts at current position, aligned to 32 bytes
+  size_t data_offset = GGML_PAD(r.offset, 32);
+
+  // Compute total tensor data size for ggml_init
+  size_t total_size = 0;
+  for (auto & ti : tensors) {
+    size_t row_size = ggml_row_size(static_cast<enum ggml_type>(ti.type), ti.ne[0]);
+    size_t n_elements = 1;
+    for (uint32_t d = 1; d < ti.n_dims; d++) n_elements *= ti.ne[d];
+    total_size += GGML_PAD(row_size * n_elements, GGML_MEM_ALIGN);
+  }
+
+  // Create ggml_context with enough memory for all tensors + overhead
+  struct ggml_init_params params;
+  params.mem_size   = total_size + n_tensors * ggml_tensor_overhead();
+  params.mem_buffer = nullptr;
+  params.no_alloc   = false;
+
+  struct ggml_context * ctx_w = ggml_init(params);
+  if (!ctx_w) {
+    fprintf(stderr, "Failed to allocate ggml context\n");
     return nullptr;
   }
 
-  // Load from the temp file
-  struct khmer_context * ctx = khmer_init_from_file(temp_path);
+  // Create tensors and copy data from buffer
+  const uint8_t * buf = static_cast<const uint8_t *>(data);
+  for (auto & ti : tensors) {
+    struct ggml_tensor * t = ggml_new_tensor(ctx_w,
+      static_cast<enum ggml_type>(ti.type), ti.n_dims, ti.ne);
+    ggml_set_name(t, ti.name.c_str());
+    memcpy(t->data, buf + data_offset + ti.offset, ggml_nbytes(t));
+  }
 
-  // Delete the temp file
-  unlink(temp_path);
+  // Build khmer_context
+  auto * ctx = new khmer_context();
+  ctx->model.ctx_w    = ctx_w;
+  ctx->model.gguf_ctx = nullptr;
+  ctx->model.hparams  = hparams;
+
+  // Load tensors by name
+  ctx->model.embedding   = ggml_get_tensor(ctx_w, "embedding.weight");
+  ctx->model.gru_w_ih_f  = ggml_get_tensor(ctx_w, "gru.weight_ih_l0");
+  ctx->model.gru_w_hh_f  = ggml_get_tensor(ctx_w, "gru.weight_hh_l0");
+  ctx->model.gru_b_ih_f  = ggml_get_tensor(ctx_w, "gru.bias_ih_l0");
+  ctx->model.gru_b_hh_f  = ggml_get_tensor(ctx_w, "gru.bias_hh_l0");
+  ctx->model.gru_w_ih_b  = ggml_get_tensor(ctx_w, "gru.weight_ih_l0_reverse");
+  ctx->model.gru_w_hh_b  = ggml_get_tensor(ctx_w, "gru.weight_hh_l0_reverse");
+  ctx->model.gru_b_ih_b  = ggml_get_tensor(ctx_w, "gru.bias_ih_l0_reverse");
+  ctx->model.gru_b_hh_b  = ggml_get_tensor(ctx_w, "gru.bias_hh_l0_reverse");
+  ctx->model.fc_w        = ggml_get_tensor(ctx_w, "fc.weight");
+  ctx->model.fc_b        = ggml_get_tensor(ctx_w, "fc.bias");
+
+  // Load CRF parameters
+  struct ggml_tensor * crf_start = ggml_get_tensor(ctx_w, "crf.start_transitions");
+  struct ggml_tensor * crf_end   = ggml_get_tensor(ctx_w, "crf.end_transitions");
+  struct ggml_tensor * crf_trans = ggml_get_tensor(ctx_w, "crf.transitions");
+
+  int num_labels = hparams.num_labels;
+  ctx->model.crf_start.resize(num_labels);
+  ctx->model.crf_end.resize(num_labels);
+  ctx->model.crf_trans.resize(num_labels * num_labels);
+
+  memcpy(ctx->model.crf_start.data(), ggml_get_data_f32(crf_start), num_labels * sizeof(float));
+  memcpy(ctx->model.crf_end.data(), ggml_get_data_f32(crf_end), num_labels * sizeof(float));
+  memcpy(ctx->model.crf_trans.data(), ggml_get_data_f32(crf_trans), num_labels * num_labels * sizeof(float));
+
+  // Initialize tokenizer
+  khmer_tokenizer_init(ctx->tokenizer);
 
   return ctx;
 }
