@@ -478,6 +478,7 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
   }
   result.reserve(token_ids.size() / 4 + 1);
   std::string current_word;
+  int32_t prev_tag = -1;
 
   // Iterate through text characters, skipping BOS (index 0) and EOS (last)
   const char * p = text;
@@ -499,13 +500,14 @@ std::vector<std::string> khmer_segment(struct khmer_context * ctx, const char * 
     } else if (tag == 2) {  // I-WORD
       current_word += ch;
     } else {  // 0 (non-Khmer)
-      if (!current_word.empty()) {
+      if (prev_tag != 0 && !current_word.empty()) {
         result.push_back(std::move(current_word));
         current_word.clear();
       }
-      result.push_back(ch);
+      current_word += ch;
     }
 
+    prev_tag = tag;
     p += len;
     pred_idx++;
   }
